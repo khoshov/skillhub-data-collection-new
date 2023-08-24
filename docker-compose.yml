@@ -1,0 +1,17 @@
+version: "3.4"
+
+services:
+  skillhub-data-collection:
+    build:
+      context: .
+      dockerfile: Dockerfile.crawler
+    image:  skillhub-data-collection
+    container_name:  skillhub-data-collection
+    entrypoint: ["dumb-init", "python", "main.py"]
+    hostname:  skillhub-data-collection
+    env_file: .env
+    volumes:
+      - ./:/app
+    restart: on-failure
+
+
