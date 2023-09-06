@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1
+
+FROM python:3.10.6-buster as base
+
+# Setup env
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONFAULTHANDLER 1
+ENV PYTHONUNBUFFERED 1
+ENV PIPENV_VENV_IN_PROJECT=1
+
+# install ChromeDriver
+RUN apt-get -qqy update \
+  && apt-get -qqy --no-install-recommends install \
+    bzip2 \
+    ca-certificates \
+    sudo \
+    unzip \
+    wget \
+    jq \
+    curl \
+    supervisor \
+    gnupg2 \
+    dpkg \
+    snapd
+
+ARG CHROME_VERSION="google-chrome-stable"
+RUN apt update && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+  && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+  && apt-get update -qqy \
+  && apt-get -qqy install \
+    ${CHROME_VERSION:-google-chrome-stable} \
+  && rm /etc/apt/sources.list.d/google-chrome.list \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+
+FROM base AS python-deps
+
+# Install pipenv
+RUN pip install pipenv
+
+# Install python dependencies in /.venv
+COPY Pipfile .
+COPY Pipfile.lock .
+RUN pipenv sync
+
+FROM base AS runtime
+
+# Copy virtual env from python-deps stage
+COPY --from=python-deps /.venv /.venv
+ENV PATH="/.venv/bin:$PATH"
+
+FROM runtime as app
+
+# install dumb-init
+RUN apt-get update && apt-get install -y dumb-init
+
+# Install application into container
+WORKDIR /app
+ENV HOME="/tmp"
+ENV TMP="/tmp"
+ENV TMPDIR="/tmp"
+RUN groupadd -g 10001 appuser \
+&& useradd -u 10001 -g 10001 appuser
+COPY . .
+RUN chown 10001:10001 -R .
+USER 10001:10001
+
+# Run the application and migrations
+# ENTRYPOINT ["dumb-init", "python", "main.py"]
